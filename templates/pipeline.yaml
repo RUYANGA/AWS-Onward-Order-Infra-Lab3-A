@@ -1,0 +1,399 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Onward Logistics order system - release pipeline. An EventBridge rule starts
+  CodePipeline when GitHub Actions pushes a new "latest" image to ECR. The
+  pipeline hands the image, task definition and appspec to CodeDeploy, which
+  performs a blue/green release with automatic rollback on alarm.
+
+Parameters:
+  Project:
+    Type: String
+    Default: onward
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: prod
+  Owner:
+    Type: String
+  CostCenter:
+    Type: String
+  ReleaseImageTag:
+    Type: String
+    Default: latest
+    Description: The ECR tag whose push starts a release.
+  DeployBundleKey:
+    Type: String
+    Default: deploy/deploy-bundle.zip
+  DeploymentConfig:
+    Type: String
+    Default: CodeDeployDefault.ECSCanary10Percent5Minutes
+    AllowedValues:
+      - CodeDeployDefault.ECSAllAtOnce
+      - CodeDeployDefault.ECSCanary10Percent5Minutes
+      - CodeDeployDefault.ECSLinear10PercentEvery1Minutes
+    Description: Canary sends 10% of customers to the new version for 5 minutes first.
+  KeepOldVersionMinutes:
+    Type: Number
+    Default: 15
+    Description: How long the previous version stays running after a release, for one-click rollback.
+
+Resources:
+  # ------------------------------------------------------------ Artifact store
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Project}-${Environment}-pipeline-artifacts-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-artifacts
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # ---------------------------------------------------------------- CodeDeploy
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Project}-${Environment}-codedeploy"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AWSCodeDeployRoleForECS"
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: !Sub "${Project}-${Environment}-order-app"
+      ComputePlatform: ECS
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  DeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: !Sub "${Project}-${Environment}-order-dg"
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      DeploymentConfigName: !Ref DeploymentConfig
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+      BlueGreenDeploymentConfiguration:
+        DeploymentReadyOption:
+          ActionOnTimeout: CONTINUE_DEPLOYMENT
+          WaitTimeInMinutes: 0
+        TerminateBlueInstancesOnDeploymentSuccess:
+          Action: TERMINATE
+          TerminationWaitTimeInMinutes: !Ref KeepOldVersionMinutes
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events: [DEPLOYMENT_FAILURE, DEPLOYMENT_STOP_ON_ALARM]
+      AlarmConfiguration:
+        Enabled: true
+        Alarms:
+          - Name: !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-Target5xxAlarmName"
+          - Name: !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-BlueUnhealthyAlarmName"
+          - Name: !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-GreenUnhealthyAlarmName"
+      ECSServices:
+        - ClusterName: !ImportValue
+            "Fn::Sub": "${Project}-${Environment}-ClusterName"
+          ServiceName: !ImportValue
+            "Fn::Sub": "${Project}-${Environment}-ServiceName"
+      LoadBalancerInfo:
+        TargetGroupPairInfoList:
+          - TargetGroups:
+              - Name: !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-BlueTargetGroupName"
+              - Name: !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-GreenTargetGroupName"
+            ProdTrafficRoute:
+              ListenerArns:
+                - !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-ProductionListenerArn"
+            TestTrafficRoute:
+              ListenerArns:
+                - !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-TestListenerArn"
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # -------------------------------------------------------------- CodePipeline
+  PipelinePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${Project}-${Environment}-pipeline"
+      Description: What the release pipeline needs - and nothing more.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ArtifactStore
+            Effect: Allow
+            Action: [s3:GetObject, s3:GetObjectVersion, s3:PutObject]
+            Resource: !Sub "${ArtifactBucket.Arn}/*"
+          - Sid: ArtifactBucket
+            Effect: Allow
+            Action: [s3:GetBucketVersioning, s3:GetBucketLocation, s3:ListBucket]
+            Resource: !GetAtt ArtifactBucket.Arn
+          - Sid: ReadDeployBundle
+            Effect: Allow
+            Action: [s3:GetObject, s3:GetObjectVersion]
+            Resource: !Sub
+              - "${BucketArn}/${DeployBundleKey}"
+              - BucketArn: !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-DeployBundleBucketArn"
+          - Sid: DeployBundleBucket
+            Effect: Allow
+            Action: [s3:GetBucketVersioning, s3:GetBucketLocation, s3:ListBucket]
+            Resource: !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-DeployBundleBucketArn"
+          - Sid: ReadImage
+            Effect: Allow
+            Action: ecr:DescribeImages
+            Resource: !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-EcrRepositoryArn"
+          - Sid: RunCodeDeploy
+            Effect: Allow
+            Action:
+              - codedeploy:CreateDeployment
+              - codedeploy:GetDeployment
+              - codedeploy:GetApplication
+              - codedeploy:GetApplicationRevision
+              - codedeploy:RegisterApplicationRevision
+              - codedeploy:GetDeploymentConfig
+            Resource: "*"
+          - Sid: RegisterTaskDefinition
+            Effect: Allow
+            Action: [ecs:RegisterTaskDefinition, ecs:TagResource]
+            Resource: "*"
+          - Sid: PassTaskRoles
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - !ImportValue
+                "Fn::Sub": "${Project}-${Environment}-TaskExecutionRoleArn"
+              - !ImportValue
+                "Fn::Sub": "${Project}-${Environment}-TaskRoleArn"
+            Condition:
+              StringEquals:
+                iam:PassedToService: ecs-tasks.amazonaws.com
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Project}-${Environment}-codepipeline"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [!Ref PipelinePolicy]
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${Project}-${Environment}-order-release"
+      PipelineType: V2
+      ExecutionMode: SUPERSEDED     # a newer release replaces one still waiting
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Image
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: ECR
+                Version: "1"
+              Configuration:
+                RepositoryName: !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-EcrRepositoryName"
+                ImageTag: !Ref ReleaseImageTag
+              OutputArtifacts:
+                - Name: ImageArtifact
+              RunOrder: 1
+            - Name: DeployBundle
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: "1"
+              Configuration:
+                S3Bucket: !ImportValue
+                  "Fn::Sub": "${Project}-${Environment}-DeployBundleBucketName"
+                S3ObjectKey: !Ref DeployBundleKey
+                PollForSourceChanges: "false"   # only the ECR event starts a release
+              OutputArtifacts:
+                - Name: DeployBundle
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: BlueGreen
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeployToECS
+                Version: "1"
+              InputArtifacts:
+                - Name: DeployBundle
+                - Name: ImageArtifact
+              Configuration:
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref DeploymentGroup
+                TaskDefinitionTemplateArtifact: DeployBundle
+                TaskDefinitionTemplatePath: taskdef.json
+                AppSpecTemplateArtifact: DeployBundle
+                AppSpecTemplatePath: appspec.yaml
+                Image1ArtifactName: ImageArtifact
+                Image1ContainerName: IMAGE1_NAME
+              RunOrder: 1
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # ------------------------------------------------------------- EventBridge
+  EventsStartPipelinePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${Project}-${Environment}-events-start-pipeline"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: codepipeline:StartPipelineExecution
+            Resource: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}"
+
+  EventsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Project}-${Environment}-events-start-pipeline"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns: [!Ref EventsStartPipelinePolicy]
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  ImagePushedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${Project}-${Environment}-image-pushed"
+      Description: Start a release when a new release image is pushed to ECR.
+      State: ENABLED
+      EventPattern:
+        source: [aws.ecr]
+        detail-type: [ECR Image Action]
+        detail:
+          action-type: [PUSH]
+          result: [SUCCESS]
+          repository-name:
+            - !ImportValue
+              "Fn::Sub": "${Project}-${Environment}-EcrRepositoryName"
+          image-tag: [!Ref ReleaseImageTag]
+      Targets:
+        - Id: release-pipeline
+          Arn: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}"
+          RoleArn: !GetAtt EventsRole.Arn
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
+  CodeDeployApplicationName:
+    Value: !Ref CodeDeployApplication
+  DeploymentGroupName:
+    Value: !Ref DeploymentGroup
