@@ -19,7 +19,7 @@ parameters:
   # connection and repository link). Fill both before setting SyncStage to 1.
   ExistingConnectionArn: "arn:aws:codeconnections:eu-west-1:266735846670:connection/4573cbec-8db6-428b-89b9-5d1bb1c7d597"
   ExistingRepositoryLinkId: "a8f9dc13-7b59-4f74-b191-5416bf12506a"
-  SyncStage: "1"
+  SyncStage: "2"
 tags:
   Project: onward
   Environment: prod
