@@ -27,7 +27,7 @@ Parameters:
     Default: main
   ExistingConnectionArn:
     Type: String
-    Default: arn:aws:codeconnections:eu-west-1:266735846670:connection/2101d368-9af9-452b-a5a9-8b5e1fdd0213
+    Default: "arn:aws:codeconnections:eu-west-1:266735846670:connection/2101d368-9af9-452b-a5a9-8b5e1fdd0213"
     Description: Reuse an existing, AVAILABLE CodeConnections GitHub connection instead of creating one.
   SyncStage:
     Type: String
