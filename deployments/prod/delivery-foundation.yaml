@@ -8,6 +8,10 @@ parameters:
   # Only GitHub Actions in this repository's ReleaseBranch can assume the role the stack creates.
   AppRepositoryName: AWS-Onward-Order-App-Lab3-A
   ReleaseBranch: main
+  # The app repository uses GitHub's immutable OIDC subject:
+  # repo:RUYANGA@144314245/AWS-Onward-Order-App-Lab3-A@1447103174:ref:refs/heads/main
+  GitHubOwnerId: "144314245"
+  AppRepositoryId: "1447103174"
   # The account already has the GitHub OIDC provider (only one is allowed per account).
   ExistingOidcProviderArn: arn:aws:iam::266735846670:oidc-provider/token.actions.githubusercontent.com
 tags:

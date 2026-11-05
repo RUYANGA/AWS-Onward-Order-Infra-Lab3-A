@@ -25,6 +25,17 @@ Parameters:
   ReleaseBranch:
     Type: String
     Default: main
+  GitHubOwnerId:
+    Type: String
+    Default: ""
+    Description: >-
+      Numeric ID of the GitHub owner. Set it together with AppRepositoryId when the
+      repository uses GitHub's immutable OIDC subject format
+      (repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:...).
+  AppRepositoryId:
+    Type: String
+    Default: ""
+    Description: Numeric ID of the application repository (see GitHubOwnerId).
   ExistingOidcProviderArn:
     Type: String
     Default: ""
@@ -44,6 +55,9 @@ Parameters:
 Conditions:
   CreateOidcProvider: !Equals [!Ref ExistingOidcProviderArn, ""]
   CreateGitHubActionsRole: !Equals [!Ref ExistingGitHubActionsRoleName, ""]
+  UseImmutableSubject: !And
+    - !Not [!Equals [!Ref GitHubOwnerId, ""]]
+    - !Not [!Equals [!Ref AppRepositoryId, ""]]
 
 Resources:
   # ------------------------------------------------------------------ Registry
@@ -196,8 +210,14 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # Only this repository's release branch may assume the role.
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOwner}/${AppRepositoryName}:ref:refs/heads/${ReleaseBranch}"
+                # Only this repository's release branch may assume the role. GitHub sends
+                # either the classic subject or, for repositories using immutable
+                # subjects, one that also pins the owner and repository IDs.
+                token.actions.githubusercontent.com:sub: !If
+                  - UseImmutableSubject
+                  - - !Sub "repo:${GitHubOwner}/${AppRepositoryName}:ref:refs/heads/${ReleaseBranch}"
+                    - !Sub "repo:${GitHubOwner}@${GitHubOwnerId}/${AppRepositoryName}@${AppRepositoryId}:ref:refs/heads/${ReleaseBranch}"
+                  - !Sub "repo:${GitHubOwner}/${AppRepositoryName}:ref:refs/heads/${ReleaseBranch}"
       ManagedPolicyArns:
         - !Ref GitHubActionsPublishPolicy
       Tags:
