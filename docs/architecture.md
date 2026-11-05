@@ -52,7 +52,7 @@ Security groups: `alb-sg` (80 from anywhere, 8080 from the demo IP) -> `app-sg` 
 flowchart LR
   pr[Pull request merged<br/>to main<br/><i>the only manual step</i>] --> gha
 
-  subgraph gh[GitHub - onward-order-app repo]
+  subgraph gh[GitHub - AWS-Onward-Order-App-Lab3-A repo]
     gha[GitHub Actions<br/>test, build, smoke test]
   end
 
@@ -81,11 +81,11 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  infra[onward-order-infra repo<br/>templates/ + deployments/prod/] -->|CodeConnections| gs[CloudFormation GitSync]
-  gs --> n[onward-prod-network]
-  gs --> f[onward-prod-delivery-foundation]
-  gs --> s[onward-prod-service]
-  gs --> p[onward-prod-pipeline]
+  infra[AWS-Onward-Order-Infra-Lab3-A repo<br/>templates/ + deployments/prod/] -->|CodeConnections| gs[CloudFormation GitSync]
+  gs --> n[Onward-prod-network-App-Lab3-A]
+  gs --> f[onward-prod-delivery-foundation-App-Lab3-A]
+  gs --> s[Onward-prod-service-Lab3-A]
+  gs --> p[Onward-prod-pipeline-Lab3-A]
   n -. exports .-> s
   f -. exports .-> s
   f -. exports .-> p

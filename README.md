@@ -1,18 +1,20 @@
 # AWS-Onward-Order-Infra-Lab3-A
 
-Infrastructure for the Onward Logistics order system, written in AWS CloudFormation and deployed by **CloudFormation GitSync** from this repository. Nothing is created by hand in the console. The application code lives in a separate repository, [`onward-order-app`](../onward-order-app).
+Infrastructure for the Onward Logistics order system, written in AWS CloudFormation and deployed by **CloudFormation GitSync** from this repository. Every resource is defined here; the stacks are deployed from Git, never edited by hand. The application code lives in a separate repository, [`AWS-Onward-Order-App-Lab3-A`](https://github.com/RUYANGA/AWS-Onward-Order-App-Lab3-A).
 
 See [docs/architecture.md](docs/architecture.md) for the diagrams and [docs/discovery-report.md](docs/discovery-report.md) for the discovery work.
 
 ## How the pieces fit together
 
-| Stack | Template | What it owns | Why it is separate |
+| Stack (live name) | Template | What it owns | Why it is separate |
 |---|---|---|---|
-| `onward-prod-gitsync-bootstrap` | `templates/bootstrap-gitsync.yaml` | GitHub connection, repository link, GitSync role, one sync configuration per stack | GitSync cannot create itself; deployed once from the CLI |
-| `onward-prod-network` | `templates/network.yaml` | VPC, 2 public + 2 private subnets in 2 AZs, route tables, **all security groups**, VPC endpoints | Changes rarely; all traffic rules readable in one file |
-| `onward-prod-delivery-foundation` | `templates/delivery-foundation.yaml` | ECR repository, deploy-bundle bucket, GitHub OIDC provider and role | Must exist before the service so an image can be pushed first |
-| `onward-prod-service` | `templates/service.yaml` | ALB, blue/green target groups, ECS cluster, task definition, service, auto scaling, alarms | The running application |
-| `onward-prod-pipeline` | `templates/pipeline.yaml` | CodeDeploy app + deployment group, CodePipeline, EventBridge rule | Release machinery; can be rebuilt without touching the app |
+| *GitSync setup* | `templates/bootstrap-gitsync.yaml` | Repository link, the deploy role `onward-prod-App-cloudformation-deploy`, one sync configuration per stack | GitSync cannot create itself; set up once |
+| `Onward-prod-network-App-Lab3-A` | `templates/network.yaml` | VPC, 2 public + 2 private subnets in 2 AZs, route tables, **all security groups**, VPC endpoints | Changes rarely; all traffic rules readable in one file |
+| `onward-prod-delivery-foundation-App-Lab3-A` | `templates/delivery-foundation.yaml` | ECR repository, deploy-bundle bucket, GitHub Actions role (OIDC) and publish policy | Must exist before the service so an image can be pushed first |
+| `Onward-prod-service-Lab3-A` | `templates/service.yaml` | ALB, blue/green target groups, ECS cluster, task definition, service, auto scaling, alarms | The running application |
+| `Onward-prod-pipeline-Lab3-A` | `templates/pipeline.yaml` | CodeDeploy app + deployment group, CodePipeline, EventBridge rule | Release machinery; can be rebuilt without touching the app |
+
+Region: **eu-west-1**. Application URL: output `ApplicationUrl` of the service stack.
 
 Stacks pass values with CloudFormation exports named `<project>-<env>-<Name>` (for example `onward-prod-VpcId`). Each file in `deployments/prod/` is a GitSync deployment file: it names the template, its parameters and the tags applied to every resource.
 
@@ -20,41 +22,44 @@ Stacks pass values with CloudFormation exports named `<project>-<env>-<Name>` (f
 
 **IAM:** no inline policies. Roles use AWS-managed policies or `AWS::IAM::ManagedPolicy` resources. The `validate` workflow fails any pull request that adds an inline policy.
 
+## How it is deployed
+
+GitSync watches `main` of this repository. Each stack has a sync configuration that points at its deployment file in `deployments/prod/`; a merge to `main` that changes a template or deployment file updates the matching stack.
+
+| Sync configuration (stack) | Deployment file | Role | Trigger |
+|---|---|---|---|
+| `Onward-prod-network-App-Lab3-A` | `deployments/prod/network.yaml` | `onward-prod-App-cloudformation-deploy` | any change on `main` |
+| `onward-prod-delivery-foundation-App-Lab3-A` | `deployments/prod/delivery-foundation.yaml` | same | any change on `main` |
+| `Onward-prod-service-Lab3-A` | `deployments/prod/service.yaml` | same | any change on `main` |
+| `Onward-prod-pipeline-Lab3-A` | `deployments/prod/pipeline.yaml` | same | any change on `main` |
+
+**Deploy role** `onward-prod-App-cloudformation-deploy`: trusted by `cloudformation.amazonaws.com` (builds the resources) and `cloudformation.sync.codeconnections.amazonaws.com` (starts each sync), with `PowerUserAccess` and `IAMFullAccess` (the stacks create IAM roles). Tighten to service-specific policies for real production.
+
+**GitHub Actions role** `onward-prod-github-actions` (created by the foundation stack): only `RUYANGA/AWS-Onward-Order-App-Lab3-A` on `main` can assume it, through the account's existing GitHub OIDC provider. Both subject formats are trusted: classic `repo:<owner>/<repo>:ref:refs/heads/main` and GitHub's immutable `repo:<owner>@<id>/<repo>@<id>:ref:refs/heads/main`.
+
 ## Build it from scratch
 
-Prerequisites: AWS CLI v2 with an admin profile, two GitHub repositories (`onward-order-infra`, `onward-order-app`), and the `REPLACE-…` values in `deployments/prod/*.yaml` filled in.
+Prerequisites: two GitHub repositories (this one and the app), an **Available** GitHub connection in *Developer Tools > Settings > Connections* with access to this repository, and the console in **eu-west-1**.
 
-1. **Find your Region's S3 prefix list** and put it in `deployments/prod/network.yaml`:
-   ```bash
-   aws ec2 describe-managed-prefix-lists \
-     --filters Name=prefix-list-name,Values=com.amazonaws.$AWS_REGION.s3 \
-     --query 'PrefixLists[0].PrefixListId' --output text
-   ```
-   Commit and push.
+1. **S3 prefix list.** `deployments/prod/network.yaml` uses `pl-6da54004` (the S3 prefix list for eu-west-1). For another Region use the ID shown under *VPC > Managed prefix lists* for `com.amazonaws.<region>.s3`.
 
-2. **Create the GitHub connection (stage 0):**
-   ```bash
-   aws cloudformation deploy --stack-name onward-prod-gitsync-bootstrap \
-     --template-file templates/bootstrap-gitsync.yaml --capabilities CAPABILITY_NAMED_IAM \
-     --parameter-overrides Owner=<you> GitHubOwner=<github-user> SyncStage=0
-   ```
-   The connection is created in `PENDING` state. AWS requires a person to authorise it once in GitHub: open *Developer Tools > Settings > Connections*, choose the connection and select *Update pending connection*. This is an OAuth handshake, not resource creation.
+2. **GitSync setup.** *CloudFormation > Create stack > With new resources > Upload a template file* with `templates/bootstrap-gitsync.yaml`. Its defaults reproduce the live setup (stack names, deploy role, connection and repository link). Enter `GitHubOwner = RUYANGA`, keep `SyncStage = 1`, acknowledge IAM resources with custom names and submit. In a fresh account set `ExistingConnectionArn` and `ExistingRepositoryLinkId` to empty values to create them (a new connection must be authorised once in the console).
 
-3. **Turn on GitSync one stack at a time.** Re-run the command above with `SyncStage=1`, wait for `onward-prod-network` to reach `CREATE_COMPLETE`, then `SyncStage=2` and wait for `onward-prod-delivery-foundation`.
+   *Equivalent console route, used for the live environment:* *Create stack > Sync from Git*, once per stack in the order below, choosing the linked repository `AWS-Onward-Order-Infra-Lab3-A`, branch `main`, "I am providing my own file" with the deployment file path from the table above, and `onward-prod-App-cloudformation-deploy` as the IAM role.
 
-4. **Publish the first image.** In the app repository set two GitHub *variables* (not secrets; neither is a credential): `AWS_REGION` and `AWS_ROLE_ARN` (output `GitHubActionsRoleArn` of the foundation stack). `ECR_REPOSITORY`, `TASK_FAMILY` and `DEPLOY_BUCKET` default to the names these stacks create and only need setting to override them. Run the *Build and release* workflow. It pushes the image and skips the bundle because no task definition exists yet.
+3. **Network, then foundation.** Wait for the network stack to complete, then raise `SyncStage` to `2` (*Update stack > Use existing template*) and wait for the foundation stack. Stacks import each other's outputs, so a stack created before the one it depends on fails with `No export named onward-prod-… found`; retry it from its *Git sync* tab once the dependency is complete.
 
-   **Reusing an existing GitHub Actions role.** Set `ExistingGitHubActionsRoleName` in `deployments/prod/delivery-foundation.yaml` (this repository uses `github-actions-ecr-push`). The stack then attaches the `onward-prod-github-publish` policy to that role instead of creating `onward-prod-github-actions`. The role's trust policy is not managed by this stack: it must allow `repo:<owner>/onward-order-app:ref:refs/heads/main` through the GitHub OIDC provider.
+4. **Publish the first image.** In the app repository set two GitHub *variables* (not secrets): `AWS_REGION = eu-west-1` and `AWS_ROLE_ARN` = output `GitHubActionsRoleArn` of the foundation stack. Run *Build and release*: it pushes the image and skips the deployment bundle because no task definition exists yet.
 
-5. **`SyncStage=3`** creates the service from that image. **`SyncStage=4`** creates the pipeline. Its first automatic run fails because there is no bundle yet; that is expected.
+5. **Service, then pipeline.** `SyncStage = 3` creates the service from that image (about 5 minutes, until both tasks are healthy); `SyncStage = 4` creates the pipeline.
 
-6. **Run *Build and release* again.** From now on every merge to `main` releases automatically.
+6. **Run *Build and release* again.** It uploads the deployment bundle and moves `latest`, and CodePipeline runs the first blue/green release. From then on every merge to the app's `main` releases automatically.
 
-From here, infrastructure changes are made by pull request to this repository; GitSync applies them when they merge.
+Infrastructure changes are made by pull request to this repository; CI validates them and GitSync applies them when they merge.
 
 ### Things to know before changing the service stack
 
-With `DeploymentController: CODE_DEPLOY`, CodeDeploy owns the running task definition, the listener rules and which target group is live. CloudFormation cannot update those on this service. To change CPU, memory or environment variables, change them in `service.yaml` (for new environments), and for the live service let the next release carry them: the app repository builds each release's task definition from the latest registered revision. Larger changes (subnets, load balancer wiring) mean replacing the service.
+With `DeploymentController: CODE_DEPLOY`, CodeDeploy owns the running task definition, the listener rules and which target group is live. CloudFormation cannot update those on this service, so **drift detection on the service stack always reports `Service`, `ProductionListener` and `TestListener` as modified** (live task definition revision and active blue or green target group). That drift is expected and alternates with every release; the network, foundation and pipeline stacks should always be `IN_SYNC`. To change CPU, memory or environment variables, change them in `service.yaml` (for new environments), and for the live service let the next release carry them: the app repository builds each release's task definition from the latest registered revision. Larger changes (subnets, load balancer wiring) mean replacing the service.
 
 ## Demonstrating the client's checks
 
@@ -65,12 +70,12 @@ Set `TestTrafficCidr` to `<your-ip>/32` before the review if you want to show th
 | One public address; containers in private subnets with no route to the internet | Open the `ApplicationUrl` output. In VPC > Route tables show `onward-prod-private-rt`: only `local` and the S3 prefix list, no `0.0.0.0/0`, no NAT gateway. Show tasks have no public IP (ECS > task > Networking). Show `app-sg` ingress is `alb-sg` only. |
 | Push a change, new version runs, no manual steps | Change the page in the app repo, merge. Watch GitHub Actions > EventBridge > CodePipeline > CodeDeploy. The *Release* field on the page changes to the new commit SHA. |
 | No downtime; bad release reversible | Run `while true; do curl -s -o /dev/null -w "%{http_code}\n" $URL; sleep 0.5; done` during a release: only `200`s. For a bad release, make `home()` raise an exception and merge. The canary sends 10% of traffic, the 5xx alarm fires, CodeDeploy rolls back automatically. Also show *Stop and roll back* in CodeDeploy and the *Roll back to a previous release* workflow. |
-| No long-lived credentials | Search both repos for `AKIA` / `aws_secret` (nothing). Show the workflow uses `id-token: write` + `role-to-assume`. Show the role's trust policy is limited to `repo:<owner>/onward-order-app:ref:refs/heads/main`. IAM > Users: no access keys used by the pipeline. |
+| No long-lived credentials | Search both repos for `AKIA` / `aws_secret` (nothing). Show the workflow uses `id-token: write` + `role-to-assume`. Show the role's trust policy is limited to `repo:RUYANGA/AWS-Onward-Order-App-Lab3-A:ref:refs/heads/main (or the immutable ID form)`. IAM > Users: no access keys used by the pipeline. |
 | Adds containers under load, removes them afterwards | `./scripts/load-test.sh $URL 8` in the app repo. Watch desired count rise from 2 toward 6 (scale-out cooldown 60 s), then fall back to 2 after load stops (scale-in cooldown 180 s). |
 | Survives a container or AZ failure | Container: `aws ecs stop-task` on one task; the other keeps serving and ECS starts a replacement. AZ: the page header shows which task and AZ served you. Stop every task in one AZ (`aws ecs list-tasks`, then `describe-tasks` to filter by `availabilityZone`) and show the site keeps answering from the other AZ while ECS starts replacements. For a true AZ outage test in production, AWS Fault Injection Service has an AZ power-interruption scenario. |
 | A new engineer can understand it | This README, the comments at the top of every template, `docs/architecture.md`, and the app repo README. |
 | Explain cost and rejected alternatives | Sections below. |
-| Rebuild everything from the repositories | Delete the stacks in reverse order (pipeline, service, foundation, network) after emptying the two S3 buckets and ECR repository, then follow *Build it from scratch*. |
+| Rebuild everything from the repositories | Delete the stacks in reverse order (pipeline, service, foundation, network) after emptying the two S3 buckets and the ECR repository, then the GitSync setup, then follow *Build it from scratch*. |
 
 ## What it costs
 

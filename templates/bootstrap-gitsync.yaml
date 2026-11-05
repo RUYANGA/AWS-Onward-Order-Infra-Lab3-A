@@ -1,10 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Onward Logistics - GitSync bootstrap. Deployed ONCE from the CLI; everything
-  else is deployed by CloudFormation GitSync from this repository. Creates the
-  GitHub connection, the repository link, the role GitSync uses, and one sync
-  configuration per stack. Raise SyncStage one step at a time so each stack
-  exists before the stacks that import its outputs.
+  Onward Logistics - GitSync bootstrap. Describes how CloudFormation GitSync is set
+  up for this repository: the GitHub repository link, the role GitSync and
+  CloudFormation use to deploy, and one sync configuration per stack. Deploy it
+  once (console or CLI); every other stack is then deployed from this repository.
+  Raise SyncStage one step at a time so each stack exists before the stacks that
+  import its outputs. The defaults match the live eu-west-1 environment.
 
 Parameters:
   Project:
@@ -16,8 +17,10 @@ Parameters:
     Default: prod
   Owner:
     Type: String
+    Default: Merci RUYANGA
   GitHubOwner:
     Type: String
+    Description: GitHub user or organisation that owns the infrastructure repository (RUYANGA).
   InfraRepositoryName:
     Type: String
     Default: AWS-Onward-Order-Infra-Lab3-A
@@ -26,18 +29,49 @@ Parameters:
     Default: main
   ExistingConnectionArn:
     Type: String
-    Default: ""
-    Description: Reuse an existing, AVAILABLE CodeConnections GitHub connection instead of creating one.
+    Default: arn:aws:codeconnections:eu-west-1:266735846670:connection/2101d368-9af9-452b-a5a9-8b5e1fdd0213
+    Description: >-
+      Reuse an existing, AVAILABLE GitHub connection (Developer Tools > Settings >
+      Connections) instead of creating one. Set to "" to create one; a new
+      connection must be authorised once in the console before stage 1.
+  ExistingRepositoryLinkId:
+    Type: String
+    Default: 3f04c471-c951-4eed-bdde-204f1cbad69a
+    Description: >-
+      Reuse an existing repository link for InfraRepositoryName instead of creating
+      one (a repository can only be linked once per account and Region). Set to ""
+      to create the link.
+  DeployRoleName:
+    Type: String
+    Default: onward-prod-App-cloudformation-deploy
+    Description: >-
+      Role assumed by GitSync to start each sync and by CloudFormation to create the
+      stacks' resources.
+  NetworkStackName:
+    Type: String
+    Default: Onward-prod-network-App-Lab3-A
+  FoundationStackName:
+    Type: String
+    Default: onward-prod-delivery-foundation-App-Lab3-A
+  ServiceStackName:
+    Type: String
+    Default: Onward-prod-service-Lab3-A
+  PipelineStackName:
+    Type: String
+    Default: Onward-prod-pipeline-Lab3-A
   SyncStage:
     Type: String
     AllowedValues: ["0", "1", "2", "3", "4"]
     Default: "0"
     Description: >-
-      0 = connection only (authorise it, see README). 1 = + network.
-      2 = + delivery-foundation. 3 = + service. 4 = + pipeline.
+      0 = connection and role only. 1 = + network. 2 = + delivery-foundation.
+      3 = + service (push the first image before this). 4 = + pipeline.
 
 Conditions:
   CreateConnection: !Equals [!Ref ExistingConnectionArn, ""]
+  CreateRepositoryLink: !And
+    - !Equals [!Ref ExistingRepositoryLinkId, ""]
+    - !Condition Stage1
   Stage1: !Or [!Equals [!Ref SyncStage, "1"], !Equals [!Ref SyncStage, "2"], !Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
   Stage2: !Or [!Equals [!Ref SyncStage, "2"], !Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
   Stage3: !Or [!Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
@@ -62,7 +96,7 @@ Resources:
 
   RepositoryLink:
     Type: AWS::CodeStarConnections::RepositoryLink
-    Condition: Stage1
+    Condition: CreateRepositoryLink
     Properties:
       ConnectionArn: !If [CreateConnection, !Ref GitHubConnection, !Ref ExistingConnectionArn]
       OwnerId: !Ref GitHubOwner
@@ -77,58 +111,25 @@ Resources:
         - Key: ManagedBy
           Value: cloudformation
 
-  # Permissions GitSync itself needs (customer-managed, not inline).
-  GitSyncPolicy:
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-      ManagedPolicyName: !Sub "${Project}-${Environment}-gitsync"
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Sid: StackOperations
-            Effect: Allow
-            Action:
-              - cloudformation:CreateChangeSet
-              - cloudformation:DeleteChangeSet
-              - cloudformation:DescribeChangeSet
-              - cloudformation:DescribeStackEvents
-              - cloudformation:DescribeStacks
-              - cloudformation:ExecuteChangeSet
-              - cloudformation:GetTemplate
-              - cloudformation:ListChangeSets
-              - cloudformation:ListStacks
-              - cloudformation:ValidateTemplate
-            Resource: "*"
-          - Sid: SyncEventRules
-            Effect: Allow
-            Action:
-              - events:PutRule
-              - events:PutTargets
-              - events:DeleteRule
-              - events:DescribeRule
-              - events:RemoveTargets
-            Resource: !Sub "arn:${AWS::Partition}:events:*:${AWS::AccountId}:rule/AWSCloudFormationManaged*"
-            Condition:
-              StringEquals:
-                events:ManagedBy: cloudformation.sync.codeconnections.amazonaws.com
-
-  # GitSync creates the stacks with this role, so it also needs rights to build
-  # the resources in templates/. Tighten to service-specific policies for real prod.
-  GitSyncRole:
+  # One role for both jobs: GitSync assumes it to create change sets, and
+  # CloudFormation assumes it to build the resources in templates/ (VPC, ECS,
+  # load balancer, IAM roles for the tasks, pipeline). Broad AWS-managed policies
+  # keep the lab simple; tighten to service-specific policies for real production.
+  DeployRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${Project}-${Environment}-gitsync"
+      RoleName: !Ref DeployRoleName
+      Description: Deploys the Onward stacks from Git (CloudFormation GitSync).
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
               Service:
-                - cloudformation.sync.codeconnections.amazonaws.com
                 - cloudformation.amazonaws.com
+                - cloudformation.sync.codeconnections.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
-        - !Ref GitSyncPolicy
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess"
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/IAMFullAccess"
       Tags:
@@ -146,56 +147,57 @@ Resources:
     Condition: Stage1
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-network"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      ResourceName: !Ref NetworkStackName
+      RepositoryLinkId: !If [CreateRepositoryLink, !GetAtt RepositoryLink.RepositoryLinkId, !Ref ExistingRepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/network.yaml"
-      RoleArn: !GetAtt GitSyncRole.Arn
+      RoleArn: !GetAtt DeployRole.Arn
       PublishDeploymentStatus: ENABLED
-      TriggerResourceUpdateOn: FILE_CHANGE
+      TriggerResourceUpdateOn: ANY_CHANGE
 
   FoundationSync:
     Type: AWS::CodeStarConnections::SyncConfiguration
     Condition: Stage2
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-delivery-foundation"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      ResourceName: !Ref FoundationStackName
+      RepositoryLinkId: !If [CreateRepositoryLink, !GetAtt RepositoryLink.RepositoryLinkId, !Ref ExistingRepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/delivery-foundation.yaml"
-      RoleArn: !GetAtt GitSyncRole.Arn
+      RoleArn: !GetAtt DeployRole.Arn
       PublishDeploymentStatus: ENABLED
-      TriggerResourceUpdateOn: FILE_CHANGE
+      TriggerResourceUpdateOn: ANY_CHANGE
 
   ServiceSync:
     Type: AWS::CodeStarConnections::SyncConfiguration
     Condition: Stage3
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-service"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      ResourceName: !Ref ServiceStackName
+      RepositoryLinkId: !If [CreateRepositoryLink, !GetAtt RepositoryLink.RepositoryLinkId, !Ref ExistingRepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/service.yaml"
-      RoleArn: !GetAtt GitSyncRole.Arn
+      RoleArn: !GetAtt DeployRole.Arn
       PublishDeploymentStatus: ENABLED
-      TriggerResourceUpdateOn: FILE_CHANGE
+      TriggerResourceUpdateOn: ANY_CHANGE
 
   PipelineSync:
     Type: AWS::CodeStarConnections::SyncConfiguration
     Condition: Stage4
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-pipeline"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      ResourceName: !Ref PipelineStackName
+      RepositoryLinkId: !If [CreateRepositoryLink, !GetAtt RepositoryLink.RepositoryLinkId, !Ref ExistingRepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/pipeline.yaml"
-      RoleArn: !GetAtt GitSyncRole.Arn
+      RoleArn: !GetAtt DeployRole.Arn
       PublishDeploymentStatus: ENABLED
-      TriggerResourceUpdateOn: FILE_CHANGE
+      TriggerResourceUpdateOn: ANY_CHANGE
 
 Outputs:
   ConnectionArn:
-    Description: Authorise this connection once (see README step 2).
+    Description: GitHub connection used by GitSync (a new one must be authorised once in the console).
     Value: !If [CreateConnection, !Ref GitHubConnection, !Ref ExistingConnectionArn]
-  GitSyncRoleArn:
-    Value: !GetAtt GitSyncRole.Arn
+  DeployRoleArn:
+    Description: Role used by GitSync and CloudFormation to deploy every stack.
+    Value: !GetAtt DeployRole.Arn
