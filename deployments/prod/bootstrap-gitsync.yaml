@@ -3,6 +3,10 @@
 # SyncStage here (by pull request) is how each stack is switched on:
 #   1 = network, 2 = + delivery-foundation, 3 = + service, 4 = + pipeline.
 # Push the first app image (Build and release) between 2 and 3.
+# GitSync only updates existing stacks: before raising SyncStage to a stack, create
+# it from templates/gitsync-placeholder.yaml with the stack name below:
+#   1 onward-prod-network-Lab3-A        2 onward-prod-delivery-foundation-Lab3-A
+#   3 onward-prod-service-Lab3-A        4 onward-prod-pipeline-Lab3-A
 template-file-path: templates/bootstrap-gitsync.yaml
 parameters:
   Project: onward
