@@ -4,7 +4,6 @@ parameters:
   Project: onward
   Environment: prod
   Owner: Merci RUYANGA
-  CostCenter: REPLACE-cost-center
   GitHubOwner: RUYANGA
   AppRepositoryName: onward-order-app
   ReleaseBranch: main
@@ -16,5 +15,4 @@ tags:
   Project: onward
   Environment: prod
   Owner: Merci RUYANGA
-  CostCenter: REPLACE-cost-center
   ManagedBy: cloudformation-gitsync

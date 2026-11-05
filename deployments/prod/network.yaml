@@ -4,7 +4,6 @@ parameters:
   Project: onward
   Environment: prod
   Owner: Merci RUYANGA
-  CostCenter: REPLACE-cost-center
   VpcCidr: 10.20.0.0/16
   TestTrafficCidr: 10.20.0.0/16        # set to <your-ip>/32 during the live demo
   S3PrefixListId: "pl-6da54004"                 # pl-xxxx for your Region (see README)
@@ -12,5 +11,4 @@ tags:
   Project: onward
   Environment: prod
   Owner: Merci RUYANGA
-  CostCenter: REPLACE-cost-center
   ManagedBy: cloudformation-gitsync

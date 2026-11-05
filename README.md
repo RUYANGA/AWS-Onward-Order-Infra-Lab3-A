@@ -16,7 +16,7 @@ See [docs/architecture.md](docs/architecture.md) for the diagrams and [docs/disc
 
 Stacks pass values with CloudFormation exports named `<project>-<env>-<Name>` (for example `onward-prod-VpcId`). Each file in `deployments/prod/` is a GitSync deployment file: it names the template, its parameters and the tags applied to every resource.
 
-**Naming:** `<project>-<environment>-<component>`, e.g. `onward-prod-alb`. **Tags on every resource:** `Project`, `Environment`, `Owner`, `CostCenter`, `ManagedBy`. Align these with the Client Profile's standards if they differ.
+**Naming:** `<project>-<environment>-<component>`, e.g. `onward-prod-alb`. **Tags on every resource:** `Project`, `Environment`, `Owner`, `ManagedBy`. Align these with the Client Profile's standards if they differ.
 
 **IAM:** no inline policies. Roles use AWS-managed policies or `AWS::IAM::ManagedPolicy` resources. The `validate` workflow fails any pull request that adds an inline policy.
 
@@ -36,7 +36,7 @@ Prerequisites: AWS CLI v2 with an admin profile, two GitHub repositories (`onwar
    ```bash
    aws cloudformation deploy --stack-name onward-prod-gitsync-bootstrap \
      --template-file templates/bootstrap-gitsync.yaml --capabilities CAPABILITY_NAMED_IAM \
-     --parameter-overrides Owner=<you> CostCenter=<cc> GitHubOwner=<github-user> SyncStage=0
+     --parameter-overrides Owner=<you> GitHubOwner=<github-user> SyncStage=0
    ```
    The connection is created in `PENDING` state. AWS requires a person to authorise it once in GitHub: open *Developer Tools > Settings > Connections*, choose the connection and select *Update pending connection*. This is an OAuth handshake, not resource creation.
 

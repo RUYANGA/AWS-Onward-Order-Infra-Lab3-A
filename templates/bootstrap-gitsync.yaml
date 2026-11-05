@@ -16,8 +16,6 @@ Parameters:
     Default: prod
   Owner:
     Type: String
-  CostCenter:
-    Type: String
   GitHubOwner:
     Type: String
   InfraRepositoryName:
@@ -59,8 +57,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation
 
@@ -78,8 +74,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation
 
@@ -144,8 +138,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation
 
