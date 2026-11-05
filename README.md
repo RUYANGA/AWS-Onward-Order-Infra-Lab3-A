@@ -9,10 +9,10 @@ See [docs/architecture.md](docs/architecture.md) for the diagrams and [docs/disc
 | Stack | Template | What it owns | Why it is separate |
 |---|---|---|---|
 | `onward-prod-gitsync-bootstrap` | `templates/bootstrap-gitsync.yaml` | GitHub connection, repository link, GitSync role, one sync configuration per stack | GitSync cannot create itself; deployed once from the CLI |
-| `onward-prod-network` | `templates/network.yaml` | VPC, 2 public + 2 private subnets in 2 AZs, route tables, **all security groups**, VPC endpoints | Changes rarely; all traffic rules readable in one file |
-| `onward-prod-delivery-foundation` | `templates/delivery-foundation.yaml` | ECR repository, deploy-bundle bucket, GitHub OIDC provider and role | Must exist before the service so an image can be pushed first |
-| `onward-prod-service` | `templates/service.yaml` | ALB, blue/green target groups, ECS cluster, task definition, service, auto scaling, alarms | The running application |
-| `onward-prod-pipeline` | `templates/pipeline.yaml` | CodeDeploy app + deployment group, CodePipeline, EventBridge rule | Release machinery; can be rebuilt without touching the app |
+| `onward-prod-network-Lab3-A` | `templates/network.yaml` | VPC, 2 public + 2 private subnets in 2 AZs, route tables, **all security groups**, VPC endpoints | Changes rarely; all traffic rules readable in one file |
+| `onward-prod-delivery-foundation-Lab3-A` | `templates/delivery-foundation.yaml` | ECR repository, deploy-bundle bucket, GitHub OIDC provider and role | Must exist before the service so an image can be pushed first |
+| `onward-prod-service-Lab3-A` | `templates/service.yaml` | ALB, blue/green target groups, ECS cluster, task definition, service, auto scaling, alarms | The running application |
+| `onward-prod-pipeline-Lab3-A` | `templates/pipeline.yaml` | CodeDeploy app + deployment group, CodePipeline, EventBridge rule | Release machinery; can be rebuilt without touching the app |
 
 Stacks pass values with CloudFormation exports named `<project>-<env>-<Name>` (for example `onward-prod-VpcId`). Each file in `deployments/prod/` is a GitSync deployment file: it names the template, its parameters and the tags applied to every resource.
 
@@ -40,7 +40,7 @@ Prerequisites: AWS CLI v2 with an admin profile, two GitHub repositories (`onwar
    ```
    The connection is created in `PENDING` state. AWS requires a person to authorise it once in GitHub: open *Developer Tools > Settings > Connections*, choose the connection and select *Update pending connection*. This is an OAuth handshake, not resource creation.
 
-3. **Turn on GitSync one stack at a time.** Re-run the command above with `SyncStage=1`, wait for `onward-prod-network` to reach `CREATE_COMPLETE`, then `SyncStage=2` and wait for `onward-prod-delivery-foundation`.
+3. **Turn on GitSync one stack at a time.** Re-run the command above with `SyncStage=1`, wait for `onward-prod-network-Lab3-A` to reach `CREATE_COMPLETE`, then `SyncStage=2` and wait for `onward-prod-delivery-foundation-Lab3-A`.
 
 4. **Publish the first image.** In the app repository set two GitHub *variables* (not secrets; neither is a credential): `AWS_REGION` and `AWS_ROLE_ARN` (output `GitHubActionsRoleArn` of the foundation stack). `ECR_REPOSITORY`, `TASK_FAMILY` and `DEPLOY_BUCKET` default to the names these stacks create and only need setting to override them. Run the *Build and release* workflow. It pushes the image and skips the bundle because no task definition exists yet.
 

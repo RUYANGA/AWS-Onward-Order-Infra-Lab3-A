@@ -82,10 +82,10 @@ flowchart LR
 ```mermaid
 flowchart LR
   infra[onward-order-infra repo<br/>templates/ + deployments/prod/] -->|CodeConnections| gs[CloudFormation GitSync]
-  gs --> n[onward-prod-network]
-  gs --> f[onward-prod-delivery-foundation]
-  gs --> s[onward-prod-service]
-  gs --> p[onward-prod-pipeline]
+  gs --> n[onward-prod-network-Lab3-A]
+  gs --> f[onward-prod-delivery-foundation-Lab3-A]
+  gs --> s[onward-prod-service-Lab3-A]
+  gs --> p[onward-prod-pipeline-Lab3-A]
   n -. exports .-> s
   f -. exports .-> s
   f -. exports .-> p
