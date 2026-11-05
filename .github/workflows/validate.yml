@@ -1,0 +1,32 @@
+# Checks every template on each pull request, before GitSync deploys it from main.
+name: Validate templates
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cfn-lint
+      - run: cfn-lint templates/*.yaml
+      - name: No inline IAM policies
+        run: |
+          if grep -nE '^\s+Policies:|AWS::IAM::Policy\b' templates/*.yaml; then
+            echo "Inline policies are not allowed - use AWS::IAM::ManagedPolicy"; exit 1
+          fi
+      - name: No internet route from private subnets
+        run: |
+          python - <<'PY'
+          import re, sys
+          t = open("templates/network.yaml").read()
+          routes = re.findall(r"Type: AWS::EC2::Route\n(?:.*\n){0,6}", t)
+          bad = [r for r in routes if "PrivateRouteTable" in r]
+          sys.exit("Private route table has a route!" if bad else 0)
+          PY
