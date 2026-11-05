@@ -1,0 +1,20 @@
+# GitSync deployment file for stack onward-prod-delivery-foundation
+template-file-path: templates/delivery-foundation.yaml
+parameters:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  GitHubOwner: RUYANGA
+  AppRepositoryName: onward-order-app
+  ReleaseBranch: main
+  # The account already has the GitHub OIDC provider (only one is allowed per account).
+  ExistingOidcProviderArn: arn:aws:iam::266735846670:oidc-provider/token.actions.githubusercontent.com
+  # Reuse the role in the app repo's AWS_ROLE_ARN variable; the publish policy is attached to it.
+  ExistingGitHubActionsRoleName: github-actions-ecr-push
+tags:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  ManagedBy: cloudformation-gitsync

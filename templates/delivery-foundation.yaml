@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::LanguageExtensions   # lets the ECR lifecycle policy be written as YAML (Fn::ToJsonString)
+Description: >-
+  Onward Logistics order system - delivery foundation. The image registry (ECR),
+  the bucket that receives each release's deployment bundle, and the GitHub OIDC
+  trust that lets GitHub Actions publish without any long-lived AWS keys.
+  Deployed before the service so an image can exist before tasks start.
+
+Parameters:
+  Project:
+    Type: String
+    Default: onward
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Default: prod
+  Owner:
+    Type: String
+  CostCenter:
+    Type: String
+  GitHubOwner:
+    Type: String
+    Description: GitHub user or organisation that owns the application repository.
+  AppRepositoryName:
+    Type: String
+    Description: Name of the application repository (without the owner).
+  ReleaseBranch:
+    Type: String
+    Default: main
+  ExistingOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: >-
+      Leave empty to create the GitHub OIDC provider. If the account already has
+      one for token.actions.githubusercontent.com, paste its ARN here (an account
+      can only have one provider per URL).
+  ExistingGitHubActionsRoleName:
+    Type: String
+    Default: ""
+    Description: >-
+      Leave empty to create the GitHub Actions role. To reuse a role GitHub
+      already assumes (the AWS_ROLE_ARN repository variable), put its NAME here:
+      the publish policy is attached to it instead. That role's trust policy is
+      not managed here and must allow repo:<owner>/<app-repo>:ref:refs/heads/<branch>.
+
+Conditions:
+  CreateOidcProvider: !Equals [!Ref ExistingOidcProviderArn, ""]
+  CreateGitHubActionsRole: !Equals [!Ref ExistingGitHubActionsRoleName, ""]
+
+Resources:
+  # ------------------------------------------------------------------ Registry
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${Project}-${Environment}-order-app"
+      ImageTagMutability: MUTABLE   # "latest" is moved on each release; git-SHA tags are never reused
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText:
+          Fn::ToJsonString:
+            rules:
+              - rulePriority: 1
+                description: Keep the 30 most recent images (rollback window), expire older ones
+                selection:
+                  tagStatus: any
+                  countType: imageCountMoreThan
+                  countNumber: 30
+                action:
+                  type: expire
+      Tags:
+        - Key: Name
+          Value: !Sub "${Project}-${Environment}-order-app"
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # ------------------------------------------- Deployment bundle (taskdef + appspec)
+  DeployBundleBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Project}-${Environment}-deploy-bundles-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration:
+        Status: Enabled          # required by the CodePipeline S3 source action
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-bundle-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub "${Project}-${Environment}-deploy-bundles"
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # ----------------------------------------------------------- GitHub OIDC trust
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  # Customer-managed policy (no inline policies anywhere).
+  GitHubActionsPublishPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${Project}-${Environment}-github-publish"
+      Description: Lets the app repository's main branch push images and deployment bundles. Nothing else.
+      # Attached to the existing GitHub Actions role when one is reused; otherwise
+      # GitHubActionsRole below attaches it.
+      Roles: !If
+        - CreateGitHubActionsRole
+        - !Ref AWS::NoValue
+        - [!Ref ExistingGitHubActionsRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EcrLogin
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          - Sid: EcrPushAndRetag
+            Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+              - ecr:BatchGetImage
+              - ecr:DescribeImages
+            Resource: !GetAtt EcrRepository.Arn
+          - Sid: UploadDeploymentBundle
+            Effect: Allow
+            Action: s3:PutObject
+            Resource: !Sub "${DeployBundleBucket.Arn}/deploy/*"
+          - Sid: ReadCurrentTaskDefinition
+            Effect: Allow
+            Action: ecs:DescribeTaskDefinition
+            Resource: "*"   # this action does not support resource-level permissions
+
+  GitHubActionsRole:
+    Type: AWS::IAM::Role
+    Condition: CreateGitHubActionsRole
+    Properties:
+      RoleName: !Sub "${Project}-${Environment}-github-actions"
+      Description: Assumed by GitHub Actions through OIDC. Short-lived credentials only.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # Only this repository's release branch may assume the role.
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOwner}/${AppRepositoryName}:ref:refs/heads/${ReleaseBranch}"
+      ManagedPolicyArns:
+        - !Ref GitHubActionsPublishPolicy
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: CostCenter
+          Value: !Ref CostCenter
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+Outputs:
+  EcrRepositoryName:
+    Value: !Ref EcrRepository
+    Export:
+      Name: !Sub "${Project}-${Environment}-EcrRepositoryName"
+  EcrRepositoryArn:
+    Value: !GetAtt EcrRepository.Arn
+    Export:
+      Name: !Sub "${Project}-${Environment}-EcrRepositoryArn"
+  EcrRepositoryUri:
+    Value: !GetAtt EcrRepository.RepositoryUri
+    Export:
+      Name: !Sub "${Project}-${Environment}-EcrRepositoryUri"
+  DeployBundleBucketName:
+    Value: !Ref DeployBundleBucket
+    Export:
+      Name: !Sub "${Project}-${Environment}-DeployBundleBucketName"
+  DeployBundleBucketArn:
+    Value: !GetAtt DeployBundleBucket.Arn
+    Export:
+      Name: !Sub "${Project}-${Environment}-DeployBundleBucketArn"
+  GitHubActionsRoleArn:
+    Description: Put this in the app repository as the AWS_ROLE_ARN variable (not a secret - it is not a credential).
+    Value: !If
+      - CreateGitHubActionsRole
+      - !GetAtt GitHubActionsRole.Arn
+      - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ExistingGitHubActionsRoleName}"
