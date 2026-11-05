@@ -1,0 +1,14 @@
+# Editors and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local tooling
+.venv/
+__pycache__/
+*.log
+
+# Packaged templates / local CloudFormation output
+packaged*.yaml
+.aws-sam/
