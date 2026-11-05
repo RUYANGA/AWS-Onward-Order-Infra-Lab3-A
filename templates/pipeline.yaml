@@ -15,8 +15,6 @@ Parameters:
     Default: prod
   Owner:
     Type: String
-  CostCenter:
-    Type: String
   ReleaseImageTag:
     Type: String
     Default: latest
@@ -67,8 +65,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -93,8 +89,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -110,8 +104,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -171,8 +163,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -255,8 +245,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -328,8 +316,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -364,8 +350,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 

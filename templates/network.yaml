@@ -16,8 +16,6 @@ Parameters:
     Default: prod
   Owner:
     Type: String
-  CostCenter:
-    Type: String
   VpcCidr:
     Type: String
     Default: 10.20.0.0/16
@@ -74,8 +72,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -91,8 +87,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -121,8 +115,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -144,8 +136,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -162,8 +152,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -206,8 +194,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -229,8 +215,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -249,8 +233,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -300,8 +282,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -324,8 +304,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
@@ -348,8 +326,6 @@ Resources:
           Value: !Ref Environment
         - Key: Owner
           Value: !Ref Owner
-        - Key: CostCenter
-          Value: !Ref CostCenter
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
