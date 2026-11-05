@@ -1,0 +1,20 @@
+# GitSync deployment file for stack onward-prod-service
+template-file-path: templates/service.yaml
+parameters:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  TaskCpu: "256"
+  TaskMemory: "512"
+  DesiredCount: 2
+  MinCapacity: 2
+  MaxCapacity: 6
+  CpuTargetPercent: 50
+  OffHoursShutdown: "false"
+tags:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  ManagedBy: cloudformation-gitsync
