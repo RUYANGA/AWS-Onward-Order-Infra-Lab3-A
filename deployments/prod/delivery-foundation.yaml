@@ -5,12 +5,11 @@ parameters:
   Environment: prod
   Owner: Merci RUYANGA
   GitHubOwner: RUYANGA
+  # Only GitHub Actions in this repository's ReleaseBranch can assume the role the stack creates.
   AppRepositoryName: onward-order-app
   ReleaseBranch: main
   # The account already has the GitHub OIDC provider (only one is allowed per account).
   ExistingOidcProviderArn: arn:aws:iam::266735846670:oidc-provider/token.actions.githubusercontent.com
-  # Reuse the role in the app repo's AWS_ROLE_ARN variable; the publish policy is attached to it.
-  ExistingGitHubActionsRoleName: github-actions-ecr-push
 tags:
   Project: onward
   Environment: prod
