@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Empty placeholder for a stack that GitSync will manage. GitSync can only update
+  stacks that already exist, so create each stack from this template (with the
+  name the bootstrap's sync configuration uses) before raising SyncStage to it.
+  GitSync then replaces this template with the real one from deployments/prod/.
+
+Resources:
+  GitSyncPlaceholder:
+    Type: AWS::CloudFormation::WaitConditionHandle
