@@ -147,7 +147,7 @@ Resources:
     Condition: Stage1
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-network"
+      ResourceName: !Sub "${Project}-${Environment}-network-Lab3-A"
       RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/network.yaml"
@@ -160,7 +160,7 @@ Resources:
     Condition: Stage2
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-delivery-foundation"
+      ResourceName: !Sub "${Project}-${Environment}-delivery-foundation-Lab3-A"
       RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/delivery-foundation.yaml"
@@ -173,7 +173,7 @@ Resources:
     Condition: Stage3
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-service"
+      ResourceName: !Sub "${Project}-${Environment}-service-Lab3-A"
       RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/service.yaml"
@@ -186,7 +186,7 @@ Resources:
     Condition: Stage4
     Properties:
       SyncType: CFN_STACK_SYNC
-      ResourceName: !Sub "${Project}-${Environment}-pipeline"
+      ResourceName: !Sub "${Project}-${Environment}-pipeline-Lab3-A"
       RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/pipeline.yaml"
