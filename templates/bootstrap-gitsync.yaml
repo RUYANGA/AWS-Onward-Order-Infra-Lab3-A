@@ -16,6 +16,7 @@ Parameters:
     Default: prod
   Owner:
     Type: String
+    Default: Merci RUYANGA
   GitHubOwner:
     Type: String
   InfraRepositoryName:
@@ -26,12 +27,12 @@ Parameters:
     Default: main
   ExistingConnectionArn:
     Type: String
-    Default: ""
+    Default: "arn:aws:codeconnections:eu-west-1:266735846670:connection/2101d368-9af9-452b-a5a9-8b5e1fdd0213"
     Description: Reuse an existing, AVAILABLE CodeConnections GitHub connection instead of creating one.
   SyncStage:
     Type: String
     AllowedValues: ["0", "1", "2", "3", "4"]
-    Default: "0"
+    Default: "4"
     Description: >-
       0 = connection only (authorise it, see README). 1 = + network.
       2 = + delivery-foundation. 3 = + service. 4 = + pipeline.
