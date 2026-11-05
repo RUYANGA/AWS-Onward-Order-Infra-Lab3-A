@@ -1,0 +1,23 @@
+# GitSync deployment file for stack onward-prod-gitsync-bootstrap-Lab3-A.
+# The bootstrap creates the sync configurations for the other stacks, so raising
+# SyncStage here (by pull request) is how each stack is switched on:
+#   1 = network, 2 = + delivery-foundation, 3 = + service, 4 = + pipeline.
+# Push the first app image (Build and release) between 2 and 3.
+template-file-path: templates/bootstrap-gitsync.yaml
+parameters:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  GitHubOwner: RUYANGA
+  InfraRepositoryName: AWS-Onward-Order-Infra-Lab3-A
+  Branch: main
+  # Created in the console before the first sync (GitSync cannot create its own
+  # connection and repository link). Fill both before setting SyncStage to 1.
+  ExistingConnectionArn: ""
+  ExistingRepositoryLinkId: ""
+  SyncStage: "0"
+tags:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  ManagedBy: cloudformation-gitsync

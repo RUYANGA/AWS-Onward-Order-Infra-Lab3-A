@@ -1,10 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Onward Logistics - GitSync bootstrap. Deployed ONCE from the CLI; everything
-  else is deployed by CloudFormation GitSync from this repository. Creates the
-  GitHub connection, the repository link, the role GitSync uses, and one sync
-  configuration per stack. Raise SyncStage one step at a time so each stack
-  exists before the stacks that import its outputs.
+  Onward Logistics - GitSync bootstrap. Itself deployed by GitSync from
+  deployments/prod/bootstrap-gitsync.yaml (or once from the console/CLI). Creates
+  or reuses the GitHub connection and repository link, creates the role GitSync
+  uses for the other stacks, and one sync configuration per stack. Raise
+  SyncStage one step at a time so each stack exists before the stacks that import
+  its outputs.
 
 Parameters:
   Project:
@@ -29,6 +30,13 @@ Parameters:
     Type: String
     Default: ""
     Description: Reuse an existing, AVAILABLE CodeConnections GitHub connection instead of creating one.
+  ExistingRepositoryLinkId:
+    Type: String
+    Default: ""
+    Description: >-
+      Reuse an existing repository link for InfraRepositoryName (a repository can be
+      linked only once per account and Region). When set, no connection or link is
+      created.
   SyncStage:
     Type: String
     AllowedValues: ["0", "1", "2", "3", "4"]
@@ -38,7 +46,14 @@ Parameters:
       2 = + delivery-foundation. 3 = + service. 4 = + pipeline.
 
 Conditions:
+  UseExistingLink: !Not [!Equals [!Ref ExistingRepositoryLinkId, ""]]
   CreateConnection: !Equals [!Ref ExistingConnectionArn, ""]
+  CreateConnectionResource: !And
+    - !Condition CreateConnection
+    - !Not [!Condition UseExistingLink]
+  CreateRepositoryLink: !And
+    - !Condition Stage1
+    - !Not [!Condition UseExistingLink]
   Stage1: !Or [!Equals [!Ref SyncStage, "1"], !Equals [!Ref SyncStage, "2"], !Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
   Stage2: !Or [!Equals [!Ref SyncStage, "2"], !Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
   Stage3: !Or [!Equals [!Ref SyncStage, "3"], !Equals [!Ref SyncStage, "4"]]
@@ -47,7 +62,7 @@ Conditions:
 Resources:
   GitHubConnection:
     Type: AWS::CodeStarConnections::Connection
-    Condition: CreateConnection
+    Condition: CreateConnectionResource
     Properties:
       ConnectionName: !Sub "${Project}-${Environment}-github"
       ProviderType: GitHub
@@ -63,7 +78,7 @@ Resources:
 
   RepositoryLink:
     Type: AWS::CodeStarConnections::RepositoryLink
-    Condition: Stage1
+    Condition: CreateRepositoryLink
     Properties:
       ConnectionArn: !If [CreateConnection, !Ref GitHubConnection, !Ref ExistingConnectionArn]
       OwnerId: !Ref GitHubOwner
@@ -148,7 +163,7 @@ Resources:
     Properties:
       SyncType: CFN_STACK_SYNC
       ResourceName: !Sub "${Project}-${Environment}-network-Lab3-A"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      RepositoryLinkId: !If [UseExistingLink, !Ref ExistingRepositoryLinkId, !GetAtt RepositoryLink.RepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/network.yaml"
       RoleArn: !GetAtt GitSyncRole.Arn
@@ -161,7 +176,7 @@ Resources:
     Properties:
       SyncType: CFN_STACK_SYNC
       ResourceName: !Sub "${Project}-${Environment}-delivery-foundation-Lab3-A"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      RepositoryLinkId: !If [UseExistingLink, !Ref ExistingRepositoryLinkId, !GetAtt RepositoryLink.RepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/delivery-foundation.yaml"
       RoleArn: !GetAtt GitSyncRole.Arn
@@ -174,7 +189,7 @@ Resources:
     Properties:
       SyncType: CFN_STACK_SYNC
       ResourceName: !Sub "${Project}-${Environment}-service-Lab3-A"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      RepositoryLinkId: !If [UseExistingLink, !Ref ExistingRepositoryLinkId, !GetAtt RepositoryLink.RepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/service.yaml"
       RoleArn: !GetAtt GitSyncRole.Arn
@@ -187,7 +202,7 @@ Resources:
     Properties:
       SyncType: CFN_STACK_SYNC
       ResourceName: !Sub "${Project}-${Environment}-pipeline-Lab3-A"
-      RepositoryLinkId: !GetAtt RepositoryLink.RepositoryLinkId
+      RepositoryLinkId: !If [UseExistingLink, !Ref ExistingRepositoryLinkId, !GetAtt RepositoryLink.RepositoryLinkId]
       Branch: !Ref Branch
       ConfigFile: !Sub "deployments/${Environment}/pipeline.yaml"
       RoleArn: !GetAtt GitSyncRole.Arn
@@ -196,7 +211,8 @@ Resources:
 
 Outputs:
   ConnectionArn:
-    Description: Authorise this connection once (see README step 2).
-    Value: !If [CreateConnection, !Ref GitHubConnection, !Ref ExistingConnectionArn]
+    Condition: CreateConnectionResource
+    Description: New GitHub connection; authorise it once in the console (Developer Tools > Settings > Connections).
+    Value: !Ref GitHubConnection
   GitSyncRoleArn:
     Value: !GetAtt GitSyncRole.Arn
