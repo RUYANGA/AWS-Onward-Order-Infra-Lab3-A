@@ -1,0 +1,15 @@
+# GitSync deployment file for stack onward-prod-pipeline
+template-file-path: templates/pipeline.yaml
+parameters:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  DeploymentConfig: CodeDeployDefault.ECSCanary10Percent5Minutes
+  KeepOldVersionMinutes: 15
+tags:
+  Project: onward
+  Environment: prod
+  Owner: Merci RUYANGA
+  CostCenter: REPLACE-cost-center
+  ManagedBy: cloudformation-gitsync
