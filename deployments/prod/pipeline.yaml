@@ -9,7 +9,7 @@ parameters:
   # Every production release waits for a person to approve it in CodePipeline.
   RequireReleaseApproval: "true"
   # Optional: set an address to be emailed when a release is waiting (confirm the SNS email once).
-  ApprovalNotificationEmail: ""
+  ApprovalNotificationEmail: "merci.ruyanga@amalitech.com"
 tags:
   Project: onward
   Environment: prod
