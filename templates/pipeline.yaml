@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Onward Logistics order system - release pipeline. An EventBridge rule starts
   CodePipeline when GitHub Actions pushes a new "latest" image to ECR. The
-  pipeline hands the image, task definition and appspec to CodeDeploy, which
-  performs a blue/green release with automatic rollback on alarm.
+  pipeline can pause for a manual release approval, then hands the image, task
+  definition and appspec to CodeDeploy, which performs a blue/green release
+  with automatic rollback on alarm.
 
 Parameters:
   Project:
@@ -34,6 +35,25 @@ Parameters:
     Type: Number
     Default: 15
     Description: How long the previous version stays running after a release, for one-click rollback.
+  RequireReleaseApproval:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Pause every release for a manual approval before CodeDeploy changes production.
+  ApprovalNotificationEmail:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    ConstraintDescription: Must be empty or a valid email address.
+    Description: >-
+      Optional. Email address told when a release is waiting for approval
+      (the recipient must confirm the SNS subscription once). Leave empty for no email.
+
+Conditions:
+  ApprovalRequired: !Equals [!Ref RequireReleaseApproval, "true"]
+  NotifyApprovers: !And
+    - !Condition ApprovalRequired
+    - !Not [!Equals [!Ref ApprovalNotificationEmail, ""]]
 
 Resources:
   # ------------------------------------------------------------ Artifact store
@@ -166,6 +186,60 @@ Resources:
         - Key: ManagedBy
           Value: cloudformation-gitsync
 
+  # --------------------------------------------------------- Release approval
+  ApprovalTopic:
+    Type: AWS::SNS::Topic
+    Condition: NotifyApprovers
+    Properties:
+      TopicName: !Sub "${Project}-${Environment}-release-approval"
+      DisplayName: Onward release approval
+      KmsMasterKeyId: alias/aws/sns
+      Tags:
+        - Key: Project
+          Value: !Ref Project
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Owner
+          Value: !Ref Owner
+        - Key: ManagedBy
+          Value: cloudformation-gitsync
+
+  ApprovalEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: NotifyApprovers
+    Properties:
+      TopicArn: !Ref ApprovalTopic
+      Protocol: email
+      Endpoint: !Ref ApprovalNotificationEmail
+
+  # Attach to the IAM users, groups or roles allowed to approve production releases.
+  ReleaseApproverPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: ApprovalRequired
+    Properties:
+      ManagedPolicyName: !Sub "${Project}-${Environment}-release-approver"
+      Description: Review and approve or reject releases of the order app - and nothing more.
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ViewPipeline
+            Effect: Allow
+            Action:
+              - codepipeline:GetPipeline
+              - codepipeline:GetPipelineState
+              - codepipeline:GetPipelineExecution
+              - codepipeline:ListPipelineExecutions
+              - codepipeline:ListActionExecutions
+            Resource: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}"
+          - Sid: ListPipelines
+            Effect: Allow
+            Action: codepipeline:ListPipelines
+            Resource: "*"
+          - Sid: ApproveRelease
+            Effect: Allow
+            Action: codepipeline:PutApprovalResult
+            Resource: !Sub "arn:${AWS::Partition}:codepipeline:${AWS::Region}:${AWS::AccountId}:${Pipeline}/Approve/ReleaseApproval"
+
   # -------------------------------------------------------------- CodePipeline
   PipelinePolicy:
     Type: AWS::IAM::ManagedPolicy
@@ -225,6 +299,13 @@ Resources:
             Condition:
               StringEquals:
                 iam:PassedToService: ecs-tasks.amazonaws.com
+          - !If
+            - NotifyApprovers
+            - Sid: NotifyApprovers
+              Effect: Allow
+              Action: sns:Publish
+              Resource: !Ref ApprovalTopic
+            - !Ref AWS::NoValue
 
   PipelineRole:
     Type: AWS::IAM::Role
@@ -262,6 +343,7 @@ Resources:
         - Name: Source
           Actions:
             - Name: Image
+              Namespace: ImageSource      # exposes #{ImageSource.ImageDigest} to later stages
               ActionTypeId:
                 Category: Source
                 Owner: AWS
@@ -288,6 +370,29 @@ Resources:
               OutputArtifacts:
                 - Name: DeployBundle
               RunOrder: 1
+        - !If
+          - ApprovalRequired
+          - Name: Approve
+            Actions:
+              - Name: ReleaseApproval
+                ActionTypeId:
+                  Category: Approval
+                  Owner: AWS
+                  Provider: Manual
+                  Version: "1"
+                Configuration:
+                  CustomData: >-
+                    Approve to release image #{ImageSource.ImageDigest} to production
+                    (onward-prod order app, blue/green). Open the link to see the image's
+                    git SHA tag, and check CI on the merged pull request. Reject to stop
+                    the release; production keeps running the current version.
+                  ExternalEntityLink: !Sub
+                    - "https://${AWS::Region}.console.aws.amazon.com/ecr/repositories/private/${AWS::AccountId}/${Repo}/_/image/#{ImageSource.ImageDigest}/details?region=${AWS::Region}"
+                    - Repo: !ImportValue
+                        "Fn::Sub": "${Project}-${Environment}-EcrRepositoryName"
+                  NotificationArn: !If [NotifyApprovers, !Ref ApprovalTopic, !Ref AWS::NoValue]
+                RunOrder: 1
+          - !Ref AWS::NoValue
         - Name: Deploy
           Actions:
             - Name: BlueGreen
@@ -381,3 +486,10 @@ Outputs:
     Value: !Ref CodeDeployApplication
   DeploymentGroupName:
     Value: !Ref DeploymentGroup
+  ReleaseApproverPolicyArn:
+    Condition: ApprovalRequired
+    Description: Attach to the people or groups allowed to approve production releases.
+    Value: !Ref ReleaseApproverPolicy
+  ApprovalTopicArn:
+    Condition: NotifyApprovers
+    Value: !Ref ApprovalTopic

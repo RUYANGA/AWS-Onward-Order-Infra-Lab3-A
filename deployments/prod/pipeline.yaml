@@ -6,6 +6,10 @@ parameters:
   Owner: Merci RUYANGA
   DeploymentConfig: CodeDeployDefault.ECSAllAtOnce
   KeepOldVersionMinutes: 5
+  # Every production release waits for a person to approve it in CodePipeline.
+  RequireReleaseApproval: "true"
+  # Optional: set an address to be emailed when a release is waiting (confirm the SNS email once).
+  ApprovalNotificationEmail: ""
 tags:
   Project: onward
   Environment: prod

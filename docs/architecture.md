@@ -69,8 +69,9 @@ flowchart LR
   eb -->|StartPipelineExecution| cp
 
   subgraph cp[CodePipeline onward-prod-order-release]
-    src1[Source: ECR image] --> dep
-    src2[Source: S3 bundle] --> dep
+    src1[Source: ECR image] --> appr
+    src2[Source: S3 bundle] --> appr
+    appr{{Approve: manual release approval<br/>optional SNS email}} -->|approved| dep
     dep[Deploy: CodeDeployToECS]
   end
 
