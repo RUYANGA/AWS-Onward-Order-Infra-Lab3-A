@@ -1,6 +1,10 @@
 # Architecture
 
-GitHub renders the diagrams below. Export them to PNG/SVG from https://mermaid.live if you need an image file.
+![onward-prod container platform architecture](architecture.png)
+
+The diagram above is the full platform: network, release pipeline and operations. Its editable source is [`architecture.drawio`](architecture.drawio) (open it in diagrams.net or the VS Code Draw.io extension and export to PNG at 2x after changes).
+
+GitHub renders the detailed diagrams below. Export them to PNG/SVG from https://mermaid.live if you need an image file.
 
 ## Resources inside the VPC
 
@@ -72,9 +76,9 @@ flowchart LR
 
   dep --> cd[CodeDeploy blue/green]
   cd -->|start green tasks| green[Green tasks<br/>new version]
-  cd -->|10% for 5 min, then 100%| alb[[ALB prod listener]]
+  cd -->|all at once, after health checks| alb[[ALB prod listener]]
   alarms[[CloudWatch alarms<br/>5xx, unhealthy hosts]] -.->|alarm = automatic rollback| cd
-  cd -->|after 15 min| blue[Blue tasks<br/>old version terminated]
+  cd -->|after 5 min| blue[Blue tasks<br/>old version terminated]
 ```
 
 ## Infrastructure delivery (GitSync)
