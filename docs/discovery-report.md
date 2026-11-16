@@ -45,6 +45,7 @@ I also considered two other choices.
 7. AWS, *CloudFormation Git sync*: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/git-sync.html
 8. AWS pricing pages for Fargate, PrivateLink and NAT gateway: https://aws.amazon.com/fargate/pricing/, https://aws.amazon.com/privatelink/pricing/, https://aws.amazon.com/vpc/pricing/
 9. DORA, *Software delivery performance metrics*: https://dora.dev/guides/dora-metrics-four-keys/
+10. AWS Pricing Calculator estimate for this design: https://calculator.aws/#/estimate?id=bc91d51c1383cfdff4475d4979578b77d8aa5860
 
 ## 2. The business value of my solution
 
@@ -83,6 +84,10 @@ This suits Onward better than the alternatives.
 | **VPC endpoints** (ECR API, ECR Docker, CloudWatch Logs; S3 gateway) | Give the private tasks a path to AWS services | Containers have no internet route, which meets Security's rule. It's also cheaper than a NAT gateway in each AZ. |
 | **AWS CloudFormation + Git sync** | Defines all five stacks in code and redeploys a stack when its file changes on `main` | Every infrastructure change is reviewed in a pull request. There is no console drift, and the platform is repeatable. |
 
+### Cost estimate
+
+About **USD 99.41 a month** (USD 1,192.92 a year) for the `prod` environment in Europe (Ireland), at on-demand prices. The full breakdown is in the AWS Pricing Calculator: https://calculator.aws/#/estimate?id=bc91d51c1383cfdff4475d4979578b77d8aa5860
+
 ### Who benefits, and how I will know
 
 | Stakeholder | Benefit | How I would know |
@@ -90,7 +95,7 @@ This suits Onward better than the alternatives.
 | **Chief Technology Officer** | Releases become routine. Merging and one approval click are the only manual steps | Release frequency goes up. Time from merge to live is about **10 minutes** (measured in CodePipeline history) |
 | **Head of Security** | No long-lived keys anywhere. Containers have no internet route. One public entry point. Least-privilege roles | **Zero** IAM access keys in the account for CI. No NAT gateway or internet route in the private route tables |
 | **Head of Operations** | Releases cause no downtime. Bad releases undo themselves. The service grows on busy days | `/health` responds throughout every release. Rollback completes in **under 5 minutes**. Task count rises during peaks |
-| **Finance Lead** | Pay only for the capacity used. No NAT gateway charges. Dev can be turned off out of hours | The monthly bill by `Project` tag is lower than an always-on, NAT-based design |
+| **Finance Lead** | A predictable bill of about **USD 99 a month** for production. Pay only for the capacity used. No NAT gateway charges. Dev can be turned off out of hours | The Cost Explorer total for the `Project=onward` tag stays close to the USD 99 estimate |
 | **Merchants and customers** | Booking stays available during releases and peak days, and fixes arrive sooner | No 5xx spikes during releases. Fewer support tickets about the booking page |
 | **Engineers** | No laptop builds. Small, low-stress releases with a clear way back | Change failure rate and time to restore service (DORA metrics) both go down |
 
