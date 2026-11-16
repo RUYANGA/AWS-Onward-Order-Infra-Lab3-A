@@ -45,7 +45,7 @@ I also considered two other choices.
 7. AWS, *CloudFormation Git sync*: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/git-sync.html
 8. AWS pricing pages for Fargate, PrivateLink and NAT gateway: https://aws.amazon.com/fargate/pricing/, https://aws.amazon.com/privatelink/pricing/, https://aws.amazon.com/vpc/pricing/
 9. DORA, *Software delivery performance metrics*: https://dora.dev/guides/dora-metrics-four-keys/
-10. AWS Pricing Calculator estimate for this design: https://calculator.aws/#/addService
+10. AWS Pricing Calculator estimate for this design: https://calculator.aws/#/estimate?id=bc91d51c1383cfdff4475d4979578b77d8aa5860
 
 ## 2. The business value of my solution
 
@@ -86,28 +86,7 @@ This suits Onward better than the alternatives.
 
 ### Cost estimate
 
-Estimated with the AWS Pricing Calculator for the `prod` environment in Europe (Ireland), at on-demand prices with no free tier:
-
-| Service | What is priced | Monthly (USD) |
-|---|---|---|
-| Amazon VPC | 3 interface endpoints × 2 AZs, 5 GB processed; 2 public IPv4 addresses for the ALB | 55.53 |
-| Elastic Load Balancing | 1 Application Load Balancer, low traffic | 19.57 |
-| AWS Fargate | 2 tasks running 24/7, 0.25 vCPU / 0.5 GB, Linux x86 | 18.01 |
-| Amazon CloudWatch | 15 metrics (Container Insights), 1 GB of logs, 5 standard alarms | 5.57 |
-| Amazon ECR | 5 GB of images (30 releases kept) | 0.50 |
-| AWS CodePipeline (V2) | 200 action minutes (about 20 releases); manual approval minutes aren't charged | 0.20 |
-| Amazon S3 | 1 GB of deploy bundles and pipeline artifacts | 0.03 |
-| **Total** | | **99.41 / month, 1,192.92 / year** |
-
-These services cost nothing at this usage: AWS CodeDeploy (ECS deployments), Amazon EventBridge (AWS service events), Amazon SNS (under 1,000 emails a month), Application Auto Scaling, AWS CloudFormation, IAM and the OIDC provider, AWS-managed KMS keys, and the S3 gateway endpoint. GitHub Actions is billed by GitHub, not AWS.
-
-What this means for the Finance Lead:
-- **The private network is the largest cost, and it is cheaper than the alternative.** The interface endpoints cost about USD 48 a month. Two NAT gateways (one per AZ) would cost about USD 70 a month plus data charges, and would give the containers an internet route that Security does not allow.
-- **Peak days add little.** Scaling from 2 to 6 tasks for a few hours costs cents, and the extra tasks are removed afterwards.
-- **Ways to save:**
-  - In `dev`, turn on `OffHoursShutdown` so the tasks stop out of hours, which cuts the Fargate line by about 70%. Or delete the dev stacks and rebuild them from Git when they are needed.
-  - A Compute Savings Plan lowers the Fargate cost for steady production use.
-- **What isn't included:** taxes, AWS Support plans, a future database, and internet data transfer above the free 100 GB a month.
+About **USD 99.41 a month** (USD 1,192.92 a year) for the `prod` environment in Europe (Ireland), at on-demand prices. The full breakdown is in the AWS Pricing Calculator: https://calculator.aws/#/estimate?id=bc91d51c1383cfdff4475d4979578b77d8aa5860
 
 ### Who benefits, and how I will know
 
